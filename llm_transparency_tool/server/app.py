@@ -39,14 +39,11 @@ from llm_transparency_tool.server.styles import (
 from llm_transparency_tool.server.utils import (
     B0,
     get_contribution_graph,
-    get_text_debounce_status,
-    is_debounced,
     load_dataset,
     load_model,
     possible_devices,
     run_model_with_session_caching,
     st_placeholder,
-    update_debounce_timer,
 )
 from llm_transparency_tool.server.monitor import SystemMonitor
 
@@ -231,27 +228,14 @@ class App:
             return selection
             
         elif input_mode == "Real-time":
-            # Real-time text input mode with proper keystroke detection
-            
-            # Initialize session state for real-time text
-            if "live_text_content" not in st.session_state:
-                st.session_state["live_text_content"] = ""
-            
-            def on_text_change():
-                """Callback function that triggers on every text change"""
-                # Update our tracking variable
-                new_text = st.session_state["live_text_input"]
-                if new_text != st.session_state.get("live_text_content", ""):
-                    st.session_state["live_text_content"] = new_text
-                    update_debounce_timer("live_text")
+            # Simple real-time text input - no timers, triggers on focus loss or Enter
             
             live_text = st.text_area(
                 "Type your text here:",
                 height=120,
-                help="✨ Real-time analysis! Just type naturally - the transparency analysis will appear automatically after you pause typing for about 1 second. No need to click away!",
+                help="Type your text and press Enter or click outside to analyze",
                 key="live_text_input",
-                placeholder="Start typing to see live transparency analysis...",
-                on_change=on_text_change  # This triggers on every keystroke!
+                placeholder="Type your text here..."
             )
             
             # Apply length limit if configured
@@ -260,23 +244,9 @@ class App:
                 st.warning(f"Text length {len(live_text)} exceeds limit of {max_len} characters")
                 live_text = live_text[:max_len]
                 
-            # Use simple debouncing check
-            if live_text.strip() and is_debounced("live_text", wait_ms=1000):
+            # Return text if it exists, otherwise None
+            if live_text.strip():
                 return live_text.strip()
-            elif live_text.strip():
-                # Show typing indicator and schedule rerun
-                st.info("⏱️ Keep typing or pause to see analysis...")
-                # Schedule a rerun after debounce period
-                import threading
-                import time as time_module
-                def delayed_rerun():
-                    time_module.sleep(1.1)  # Wait slightly longer than debounce
-                    st.rerun()
-                
-                thread = threading.Thread(target=delayed_rerun)
-                thread.daemon = True
-                thread.start()
-                return None
             else:
                 return None
                 
