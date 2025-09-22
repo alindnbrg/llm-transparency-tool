@@ -1,0 +1,25 @@
+name: llmtt
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pytorch
+  - nodejs
+  - yarn
+  - pip
+  - pip:
+      - datasets
+      - einops
+      - fancy_einsum
+      - jaxtyping==0.2.25
+      - networkx
+      - plotly
+      - pyinstrument
+      - setuptools
+      - streamlit
+      - streamlit_extras
+      - tokenizers
+      - transformer_lens
+      - transformers
+      - pytest  # fixes wrong dependencies of transformer_lens
