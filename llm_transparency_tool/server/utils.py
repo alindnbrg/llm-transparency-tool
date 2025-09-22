@@ -147,12 +147,7 @@ def is_debounced(key: str, wait_ms: int = 300) -> bool:
         
     time_since_last_change = current_time - st.session_state[last_change_key]
     
-    if time_since_last_change >= wait_ms:
-        return True
-    else:
-        # Schedule a rerun after the remaining wait time
-        st.rerun()
-        return False
+    return time_since_last_change >= wait_ms
 
 
 def update_debounce_timer(key: str):
@@ -161,6 +156,58 @@ def update_debounce_timer(key: str):
     """
     current_time = time.time() * 1000
     st.session_state[f"{key}_last_change"] = current_time
+
+
+def get_text_debounce_status(key: str, current_text: str, wait_ms: int = 800) -> str:
+    """
+    Enhanced debouncing for text input that provides smooth real-time experience.
+    
+    Args:
+        key: Unique key for this debounced action
+        current_text: Current text content
+        wait_ms: Milliseconds to wait for debouncing
+        
+    Returns:
+        'ready' if text should be processed
+        'waiting' if still in debounce period
+        'empty' if text is empty
+    """
+    if not current_text.strip():
+        return 'empty'
+        
+    current_time = time.time() * 1000
+    last_change_key = f"{key}_last_change"
+    last_text_key = f"{key}_last_text"
+    rerun_scheduled_key = f"{key}_rerun_scheduled"
+    
+    # Get previous state
+    last_text = st.session_state.get(last_text_key, "")
+    
+    # Check if text actually changed
+    if current_text != last_text:
+        # Text changed - update both timestamp and text
+        st.session_state[last_change_key] = current_time
+        st.session_state[last_text_key] = current_text
+        st.session_state[rerun_scheduled_key] = False
+        return 'waiting'
+    
+    # Text hasn't changed - check if enough time has passed
+    if last_change_key not in st.session_state:
+        st.session_state[last_change_key] = current_time
+        st.session_state[rerun_scheduled_key] = False
+        return 'waiting'
+        
+    time_since_last_change = current_time - st.session_state[last_change_key]
+    
+    if time_since_last_change >= wait_ms:
+        return 'ready'
+    else:
+        # Still waiting - schedule a rerun if not already scheduled
+        if not st.session_state.get(rerun_scheduled_key, False):
+            st.session_state[rerun_scheduled_key] = True
+            # Use a more Streamlit-friendly approach
+            st.rerun()
+        return 'waiting'
 
 
 def st_placeholder(

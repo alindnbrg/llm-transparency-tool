@@ -39,6 +39,7 @@ from llm_transparency_tool.server.styles import (
 from llm_transparency_tool.server.utils import (
     B0,
     get_contribution_graph,
+    get_text_debounce_status,
     is_debounced,
     load_dataset,
     load_model,
@@ -230,36 +231,51 @@ class App:
             return selection
             
         elif input_mode == "Real-time":
-            # Real-time text input mode - now in main area where dropdown was
-            previous_text = st.session_state.get("live_text", "")
+            # Real-time text input mode with proper keystroke detection
+            
+            # Initialize session state for real-time text
+            if "live_text_content" not in st.session_state:
+                st.session_state["live_text_content"] = ""
+            
+            def on_text_change():
+                """Callback function that triggers on every text change"""
+                # Update our tracking variable
+                new_text = st.session_state["live_text_input"]
+                if new_text != st.session_state.get("live_text_content", ""):
+                    st.session_state["live_text_content"] = new_text
+                    update_debounce_timer("live_text")
             
             live_text = st.text_area(
                 "Type your text here:",
-                value=previous_text,
                 height=120,
-                help="Text will be processed automatically as you type. Analysis will update after you stop typing for 0.5 seconds.",
+                help="✨ Real-time analysis! Just type naturally - the transparency analysis will appear automatically after you pause typing for about 1 second. No need to click away!",
                 key="live_text_input",
-                placeholder="Enter your text to analyze..."
+                placeholder="Start typing to see live transparency analysis...",
+                on_change=on_text_change  # This triggers on every keystroke!
             )
             
-            # Check if text changed and update debounce timer
-            if live_text != previous_text:
-                st.session_state["live_text"] = live_text
-                update_debounce_timer("live_text")
-                
             # Apply length limit if configured
             max_len = self._config.max_user_string_length
             if max_len is not None and len(live_text) > max_len:
                 st.warning(f"Text length {len(live_text)} exceeds limit of {max_len} characters")
                 live_text = live_text[:max_len]
-                st.session_state["live_text"] = live_text
                 
-            # Only return text if it's non-empty and debounced
-            if live_text.strip() and is_debounced("live_text", wait_ms=500):
+            # Use simple debouncing check
+            if live_text.strip() and is_debounced("live_text", wait_ms=1000):
                 return live_text.strip()
             elif live_text.strip():
-                # Show processing indicator in the main area
-                st.info("⏱️ Processing... (analysis will appear shortly)")
+                # Show typing indicator and schedule rerun
+                st.info("⏱️ Keep typing or pause to see analysis...")
+                # Schedule a rerun after debounce period
+                import threading
+                import time as time_module
+                def delayed_rerun():
+                    time_module.sleep(1.1)  # Wait slightly longer than debounce
+                    st.rerun()
+                
+                thread = threading.Thread(target=delayed_rerun)
+                thread.daemon = True
+                thread.start()
                 return None
             else:
                 return None
