@@ -568,6 +568,9 @@ class App:
         heads_placeholder = container_graph_right.empty()
         heads_placeholder.write('##### Blocks')
         container_graph_right_used = False
+        
+        # Create container for attention maps below the graph
+        container_attention_map = container_graph.container()
 
         container_top_tokens, container_token_dynamics = container_tokens.columns([1, 1])
         container_top_tokens.write('##### Top Tokens')
@@ -593,7 +596,7 @@ class App:
                 with container_graph_right:
                     container_graph_right_used = True
                     heads_placeholder.write('##### Heads')
-                    head = self.draw_attn_info(edge, container_graph)
+                    head = self.draw_attn_info(edge, container_attention_map)
                 with container_token_dynamics:
                     self.draw_attention_dynamics(edge.target, head)
                     container_token_dynamics_used = True

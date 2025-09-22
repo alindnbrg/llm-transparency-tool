@@ -6,7 +6,8 @@
 
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
-RUN apt-get update && apt-get install -y \
+RUN echo 'Acquire::PDiffs "false";\nAcquire::by-hash "false";' > /etc/apt/apt.conf.d/99fixbadproxy \
+    && apt-get update && apt-get install -y \
     wget \
     git \
     && apt-get clean \
@@ -18,10 +19,10 @@ USER user
 ENV HOME=/home/user
 
 RUN wget -P /tmp \
-    "https://github.com/conda-forge/miniforge/releases/download/23.11.0-0/Mambaforge-23.11.0-0-Linux-x86_64.sh" \
-    && bash /tmp/Mambaforge-23.11.0-0-Linux-x86_64.sh -b -p $HOME/mambaforge3 \
-    && rm /tmp/Mambaforge-23.11.0-0-Linux-x86_64.sh
-ENV PATH $HOME/mambaforge3/bin:$PATH
+    "https://github.com/conda-forge/miniforge/releases/download/23.11.0-0/Mambaforge-23.11.0-0-Linux-aarch64.sh" \
+    && bash /tmp/Mambaforge-23.11.0-0-Linux-aarch64.sh -b -p $HOME/mambaforge3 \
+    && rm /tmp/Mambaforge-23.11.0-0-Linux-aarch64.sh
+ENV PATH=$HOME/mambaforge3/bin:$PATH
 
 WORKDIR $HOME
 
@@ -31,7 +32,8 @@ COPY --chown=user . $REPO
 WORKDIR $REPO
 
 RUN mamba env create --name llmtt -f env.yaml -y
-ENV PATH $HOME/mambaforge3/envs/llmtt/bin:$PATH
+RUN mamba clean --all -y
+ENV PATH=$HOME/mambaforge3/envs/llmtt/bin:$PATH
 RUN pip install -e .
 
 RUN cd llm_transparency_tool/components/frontend \
