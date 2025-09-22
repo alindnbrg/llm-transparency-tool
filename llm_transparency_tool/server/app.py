@@ -39,11 +39,13 @@ from llm_transparency_tool.server.styles import (
 from llm_transparency_tool.server.utils import (
     B0,
     get_contribution_graph,
+    is_debounced,
     load_dataset,
     load_model,
     possible_devices,
     run_model_with_session_caching,
     st_placeholder,
+    update_debounce_timer,
 )
 from llm_transparency_tool.server.monitor import SystemMonitor
 
@@ -162,7 +164,7 @@ class App:
         )
         st.dataframe(df, use_container_width=False)
 
-    def draw_dataset_selection(self) -> int:
+    def draw_dataset_selection(self) -> Optional[str]:
         def update_dataset(filename: Optional[str]):
             dataset = load_dataset(filename) if filename is not None else []
             st.session_state["dataset"] = dataset
@@ -170,37 +172,99 @@ class App:
 
         if "dataset" not in st.session_state:
             update_dataset(self._config.preloaded_dataset_filename)
+            
+        # Initialize input mode if not set
+        if "input_mode" not in st.session_state:
+            st.session_state["input_mode"] = "Dataset"
+            
+        # Initialize live text if not set  
+        if "live_text" not in st.session_state:
+            st.session_state["live_text"] = ""
 
 
-        if not self._config.demo_mode:
-            with st.sidebar.expander("Dataset", expanded=False):
-                if self._config.allow_loading_dataset_files:
-                    row_f = st_row.row([2, 1], vertical_align="bottom")
-                    filename = row_f.text_input("Dataset", value=st.session_state.dataset_file or "", label_visibility="collapsed")
-                    if row_f.button("Load"):
-                        update_dataset(filename)
-                row_s = st_row.row([2, 1], vertical_align="bottom")
-                new_sentence = row_s.text_area("New sentence", label_visibility="collapsed")
-                new_sentence_added = False
-
-                if row_s.button("Add"):
-                    max_len = self._config.max_user_string_length
-                    n = len(new_sentence)
-                    if max_len is None or n <= max_len:
-                        st.session_state.dataset.append(new_sentence)
-                        new_sentence_added = True
-                        st.session_state.sentence_selector = new_sentence
-                    else:
-                        st.warning(f"Sentence length {n} is larger than " f"the configured limit of {max_len}")
-
-        sentences = st.session_state.dataset
-        selection = st.selectbox(
-            "Sentence",
-            sentences,
-            index=len(sentences) - 1,
-            key="sentence_selector",
+        # Input mode selector
+        input_mode = st.sidebar.radio(
+            "Input Mode",
+            ["Dataset", "Real-time"],
+            index=0 if st.session_state["input_mode"] == "Dataset" else 1,
+            help="Choose between selecting from predefined sentences or typing in real-time"
         )
-        return selection
+        
+        # Update session state if mode changed
+        if input_mode != st.session_state["input_mode"]:
+            st.session_state["input_mode"] = input_mode
+            # Clear any existing selections when switching modes
+            if input_mode == "Real-time":
+                st.session_state["live_text"] = ""
+            st.rerun()
+        
+        if input_mode == "Dataset":
+            if not self._config.demo_mode:
+                with st.sidebar.expander("Dataset", expanded=False):
+                    if self._config.allow_loading_dataset_files:
+                        row_f = st_row.row([2, 1], vertical_align="bottom")
+                        filename = row_f.text_input("Dataset", value=st.session_state.dataset_file or "", label_visibility="collapsed")
+                        if row_f.button("Load"):
+                            update_dataset(filename)
+                    row_s = st_row.row([2, 1], vertical_align="bottom")
+                    new_sentence = row_s.text_area("New sentence", label_visibility="collapsed")
+                    new_sentence_added = False
+
+                    if row_s.button("Add"):
+                        max_len = self._config.max_user_string_length
+                        n = len(new_sentence)
+                        if max_len is None or n <= max_len:
+                            st.session_state.dataset.append(new_sentence)
+                            new_sentence_added = True
+                            st.session_state.sentence_selector = new_sentence
+                        else:
+                            st.warning(f"Sentence length {n} is larger than " f"the configured limit of {max_len}")
+
+            sentences = st.session_state.dataset
+            selection = st.selectbox(
+                "Sentence",
+                sentences,
+                index=len(sentences) - 1,
+                key="sentence_selector",
+            )
+            return selection
+            
+        elif input_mode == "Real-time":
+            # Real-time text input mode - now in main area where dropdown was
+            previous_text = st.session_state.get("live_text", "")
+            
+            live_text = st.text_area(
+                "Type your text here:",
+                value=previous_text,
+                height=120,
+                help="Text will be processed automatically as you type. Analysis will update after you stop typing for 0.5 seconds.",
+                key="live_text_input",
+                placeholder="Enter your text to analyze..."
+            )
+            
+            # Check if text changed and update debounce timer
+            if live_text != previous_text:
+                st.session_state["live_text"] = live_text
+                update_debounce_timer("live_text")
+                
+            # Apply length limit if configured
+            max_len = self._config.max_user_string_length
+            if max_len is not None and len(live_text) > max_len:
+                st.warning(f"Text length {len(live_text)} exceeds limit of {max_len} characters")
+                live_text = live_text[:max_len]
+                st.session_state["live_text"] = live_text
+                
+            # Only return text if it's non-empty and debounced
+            if live_text.strip() and is_debounced("live_text", wait_ms=500):
+                return live_text.strip()
+            elif live_text.strip():
+                # Show processing indicator in the main area
+                st.info("⏱️ Processing... (analysis will appear shortly)")
+                return None
+            else:
+                return None
+                
+        return None
 
     def _unembed(
         self,
@@ -644,7 +708,10 @@ class App:
             st.stop()
 
         if self.sentence is None:
-            st.warning("No sentence selected")
+            if st.session_state.get("input_mode") == "Real-time":
+                st.info("Type text in the text area above to see the transparency analysis")
+            else:
+                st.warning("No sentence selected")
         else:
             with torch.inference_mode():
                 self.run_inference()

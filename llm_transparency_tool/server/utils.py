@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import time
 import uuid
 from typing import List, Optional, Tuple
 
@@ -122,6 +123,44 @@ def get_contribution_graph(
         B0,
         threshold,
     )
+
+
+def is_debounced(key: str, wait_ms: int = 300) -> bool:
+    """
+    Check if enough time has passed since the last input change to trigger processing.
+    Uses Streamlit session state to track timing.
+    
+    Args:
+        key: Unique key for this debounced action
+        wait_ms: Milliseconds to wait for debouncing
+        
+    Returns:
+        True if enough time has passed, False otherwise
+    """
+    current_time = time.time() * 1000  # Convert to milliseconds
+    last_change_key = f"{key}_last_change"
+    
+    # Initialize if not exists
+    if last_change_key not in st.session_state:
+        st.session_state[last_change_key] = current_time
+        return False
+        
+    time_since_last_change = current_time - st.session_state[last_change_key]
+    
+    if time_since_last_change >= wait_ms:
+        return True
+    else:
+        # Schedule a rerun after the remaining wait time
+        st.rerun()
+        return False
+
+
+def update_debounce_timer(key: str):
+    """
+    Update the timestamp for a debounced action.
+    """
+    current_time = time.time() * 1000
+    st.session_state[f"{key}_last_change"] = current_time
 
 
 def st_placeholder(
